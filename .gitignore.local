@@ -1,0 +1,5 @@
+# Local-only ignores so we don't accidentally commit secrets to upstream
+AUTH/auth.txt
+.venv/
+tick_data/
+*.log

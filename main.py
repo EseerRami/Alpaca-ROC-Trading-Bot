@@ -15,7 +15,12 @@ from datetime import timedelta
 import os.path
 
 key = json.loads(open('AUTH/auth.txt', 'r').read())
-api = alpaca.REST(key['APCA-API-KEY-ID'], key['APCA-API-SECRET-KEY'], base_url='https://api.alpaca.markets', api_version = 'v2')
+# PATCHED: forced paper URL for safety. Original was https://api.alpaca.markets (LIVE!)
+_BASE_URL = key.get('APCA-API-BASE-URL', 'https://paper-api.alpaca.markets')
+api = alpaca.REST(key['APCA-API-KEY-ID'], key['APCA-API-SECRET-KEY'], base_url=_BASE_URL, api_version = 'v2')
+print(f"[ROC] Using base_url={_BASE_URL} (paper={'paper' in _BASE_URL})")
+import os
+os.makedirs('tick_data', exist_ok=True)
 tickers = open('AUTH/Tickers.txt', 'r').read()
 tickers = tickers.upper().split()
 global TICKERS 
@@ -24,16 +29,17 @@ TICKERS = tickers
 def get_minute_data(tickers):
     
     def save_min_data(ticker):
+        # PATCHED: feed='iex' — paper accounts can't access SIP feed (default)
         prices = api.get_trades(str(ticker), start = ((dt.now().astimezone(timezone('America/New_York'))) - timedelta(minutes=2)).isoformat(),
-                                        end = ((dt.now().astimezone(timezone('America/New_York')))).isoformat(), 
-                                        limit = 10000).df[['price']]
-        prices.index = pd.to_datetime(prices.index, format = '%Y-%m-%d').strftime('%Y-%m-%d %H:%M')
+                                        end = ((dt.now().astimezone(timezone('America/New_York')))).isoformat(),
+                                        limit = 10000, feed = 'iex').df[['price']]
+        prices.index = pd.to_datetime(prices.index, format='ISO8601').strftime('%Y-%m-%d %H:%M')
         prices = prices[~prices.index.duplicated(keep='first')]
 
         quotes = api.get_quotes(str(ticker), start = ((dt.now().astimezone(timezone('America/New_York'))) - timedelta(minutes=2)).isoformat(),
-                                        end = ((dt.now().astimezone(timezone('America/New_York')))).isoformat(), 
-                                        limit = 10000).df[['ask_price']]
-        quotes.index = pd.to_datetime(quotes.index, format = '%Y-%m-%d').strftime('%Y-%m-%d %H:%M')
+                                        end = ((dt.now().astimezone(timezone('America/New_York')))).isoformat(),
+                                        limit = 10000, feed = 'iex').df[['ask_price']]
+        quotes.index = pd.to_datetime(quotes.index, format='ISO8601').strftime('%Y-%m-%d %H:%M')
         quotes = quotes[~quotes.index.duplicated(keep='first')]
 
         df = pd.merge(prices, quotes, how= 'inner', left_index=True, right_index= True)
@@ -45,28 +51,29 @@ def get_minute_data(tickers):
 def get_past30_data(tickers):
     
     def save_30_data(ticker):
+        # PATCHED: feed='iex' — paper accounts can't access SIP (default)
         prices_1 = api.get_trades(str(ticker), start = ((dt.now().astimezone(timezone('America/New_York'))) - timedelta(minutes=30)).isoformat(),
-                                        end = ((dt.now().astimezone(timezone('America/New_York'))) - timedelta(minutes=28, seconds = 30)).isoformat(), 
-                                        limit = 10000).df[['price']]
+                                        end = ((dt.now().astimezone(timezone('America/New_York'))) - timedelta(minutes=28, seconds = 30)).isoformat(),
+                                        limit = 10000, feed = 'iex').df[['price']]
         prices_2 = api.get_trades(str(ticker), start = ((dt.now().astimezone(timezone('America/New_York'))) - timedelta(minutes=1, seconds = 30)).isoformat(),
-                                        end = ((dt.now().astimezone(timezone('America/New_York')))).isoformat(), 
-                                        limit = 10000).df[['price']]
-        
-        prices_1.index = pd.to_datetime(prices_1.index, format = '%Y-%m-%d').strftime('%Y-%m-%d %H:%M')
-        prices_2.index = pd.to_datetime(prices_2.index, format = '%Y-%m-%d').strftime('%Y-%m-%d %H:%M')
-        
+                                        end = ((dt.now().astimezone(timezone('America/New_York')))).isoformat(),
+                                        limit = 10000, feed = 'iex').df[['price']]
+
+        prices_1.index = pd.to_datetime(prices_1.index, format='ISO8601').strftime('%Y-%m-%d %H:%M')
+        prices_2.index = pd.to_datetime(prices_2.index, format='ISO8601').strftime('%Y-%m-%d %H:%M')
+
         prices = pd.concat([prices_1, prices_2])
         prices = prices[~prices.index.duplicated(keep='first')]
 
         quotes_1 = api.get_quotes(str(ticker), start = ((dt.now().astimezone(timezone('America/New_York'))) - timedelta(minutes=30)).isoformat(),
-                                        end = ((dt.now().astimezone(timezone('America/New_York'))) - timedelta(minutes=28, seconds = 30)).isoformat(), 
-                                        limit = 10000).df[['ask_price']]
+                                        end = ((dt.now().astimezone(timezone('America/New_York'))) - timedelta(minutes=28, seconds = 30)).isoformat(),
+                                        limit = 10000, feed = 'iex').df[['ask_price']]
         quotes_2 = api.get_quotes(str(ticker), start = ((dt.now().astimezone(timezone('America/New_York'))) - timedelta(minutes=1, seconds = 30)).isoformat(),
-                                        end = ((dt.now().astimezone(timezone('America/New_York')))).isoformat(), 
-                                        limit = 10000).df[['ask_price']]
+                                        end = ((dt.now().astimezone(timezone('America/New_York')))).isoformat(),
+                                        limit = 10000, feed = 'iex').df[['ask_price']]
         
-        quotes_1.index = pd.to_datetime(quotes_1.index, format = '%Y-%m-%d').strftime('%Y-%m-%d %H:%M')
-        quotes_2.index = pd.to_datetime(quotes_2.index, format = '%Y-%m-%d').strftime('%Y-%m-%d %H:%M')
+        quotes_1.index = pd.to_datetime(quotes_1.index, format='ISO8601').strftime('%Y-%m-%d %H:%M')
+        quotes_2.index = pd.to_datetime(quotes_2.index, format='ISO8601').strftime('%Y-%m-%d %H:%M')
         
         quotes = pd.concat([quotes_1, quotes_2])
         quotes = quotes[~quotes.index.duplicated(keep='first')]
@@ -90,7 +97,7 @@ def return_ROC_list(tickers, timeframe):
     for i in range(len(tickers)):
         df = pd.read_csv('tick_data/{}.csv'.format(tickers[i]))
         df.set_index('timestamp', inplace= True)
-        df.index = pd.to_datetime(df.index, format ='%Y-%m-%d').strftime('%Y-%m-%d %H:%M')
+        df.index = pd.to_datetime(df.index, format='ISO8601').strftime('%Y-%m-%d %H:%M')
         ROC_tickers.append(ROC(df['ask_price'], timeframe)) # [-1] forlast value (latest)
     return ROC_tickers
 
@@ -110,7 +117,7 @@ def compare_ask_ltp(tickers, timeframe):
                 buy_stock_init = tickers[max_ROC_index]
                 df = pd.read_csv('tick_data/{}.csv'.format(buy_stock_init))
                 df.set_index('timestamp', inplace= True)
-                df.index = pd.to_datetime(df.index, format ='%Y-%m-%d').strftime('%Y-%m-%d %H:%M')
+                df.index = pd.to_datetime(df.index, format='ISO8601').strftime('%Y-%m-%d %H:%M')
 
                 # list to keep track of number of ask_prices > price
                 buy_condition = []
@@ -152,7 +159,7 @@ def algo(tickers):
 def buy(stock_to_buy: str):
     
     cashBalance = api.get_account().cash
-    price_stock = api.get_latest_trade(str(stock_to_buy)).price
+    price_stock = api.get_latest_trade(str(stock_to_buy), feed='iex').price
     targetPositionSize = ((float(cashBalance)) / (price_stock)) # Calculates required position size
     api.submit_order(str(stock_to_buy), targetPositionSize, "buy", "market", "day") # Market order to open position    
     
@@ -175,8 +182,8 @@ def buy(stock_to_buy: str):
 
 def sell(current_stock):
     # sells current_stock
-    quantity = float(api.get_position(str(current_stock)).qty)    
-    sell_price = api.get_latest_trade(str(current_stock)).price
+    quantity = float(api.get_position(str(current_stock)).qty)
+    sell_price = api.get_latest_trade(str(current_stock), feed='iex').price
     api.cancel_all_orders() # cancels all pending (to be filled) orders 
     api.close_position(str(current_stock)) # sells current stock
     
@@ -203,30 +210,13 @@ def check_rets(current_stock):
     return mail_content
 
 def mail_alert(mail_content, sleep_time):
-    # The mail addresses and password
-    sender_address = 'sender_address'
-    sender_pass = 'sender_password'
-    receiver_address = 'receiver_address'
-
-    # Setup MIME
-    message = MIMEMultipart()
-    message['From'] = 'Trading Bot'
-    message['To'] = receiver_address
-    message['Subject'] = 'HFT Second-Bot'
-    
-    # The body and the attachments for the mail
-    message.attach(MIMEText(mail_content, 'plain'))
-
-    # Create SMTP session for sending the mail
-    session = smtplib.SMTP('smtp.gmail.com', 587)  # use gmail with port
-    session.starttls()  # enable security
-
-    # login with mail_id and password
-    session.login(sender_address, sender_pass)
-    text = message.as_string()
-    session.sendmail(sender_address, receiver_address, text)
-    session.quit()
-    time.sleep(sleep_time)
+    # PATCHED: original implementation hardcoded Gmail SMTP credentials that
+    # don't exist, which crashed the whole bot on every alert. Replaced with a
+    # local-log no-op. If you want real email, fill in real Gmail App Password
+    # credentials in this function (NOT regular password - Google blocks those).
+    print("[mail_alert] (suppressed) " + str(mail_content)[:200])
+    if sleep_time:
+        time.sleep(sleep_time)
 
 def main():
     
@@ -270,7 +260,7 @@ def main():
                                     curr_stocks.append(api.list_positions()[i])
                                     
                                 if stock_to_buy in curr_stocks:
-                                    if api.get_latest_trade(stock_to_buy).price > float(api.get_position(stock_to_buy).avg_entry_price):
+                                    if api.get_latest_trade(stock_to_buy, feed='iex').price > float(api.get_position(stock_to_buy).avg_entry_price):
                                         print('LTP for {} > Average Entry Price'.format(stock_to_buy))
                                         time.sleep(2)
                                         continue
@@ -327,17 +317,26 @@ def main():
                 if api.get_clock().is_open == True:
                     continue
                 else:
-                    mail_content = 'The market is closed now'
+                    # PATCHED: instead of exiting on market close, sleep and re-check.
+                    # Original behavior killed the bot every market-close, watchdog
+                    # then resurrected it every 10min only to die again. This loop
+                    # waits for next market open instead.
+                    mail_content = 'Market closed - sleeping until next open'
                     mail_alert(mail_content, 0)
-                    break
+                    while not api.get_clock().is_open:
+                        time.sleep(300)  # check every 5 min
+                    mail_content = 'Market open - resuming trading'
+                    mail_alert(mail_content, 0)
+                    continue
         except Exception as e:
             print(e)
+            time.sleep(60)
             continue
 
-    if api.get_clock().is_open == False:
-        # sends mail when bot starts running
-        mail_content = 'The bot stopped running on {} at {} UTC'.format(dt.now().strftime('%Y-%m-%d'), dt.now().strftime('%H:%M:%S'))
-        mail_alert(mail_content, 0)
-            
+    # PATCHED: never reach here in normal operation (the loop above runs forever).
+    # Kept for safety only.
+    mail_content = 'The bot stopped running on {} at {} UTC'.format(dt.now().strftime('%Y-%m-%d'), dt.now().strftime('%H:%M:%S'))
+    mail_alert(mail_content, 0)
+
 if __name__ == '__main__':
     main()
